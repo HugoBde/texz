@@ -1,0 +1,2 @@
+# texz
+Zig text editor
