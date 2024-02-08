@@ -1,5 +1,6 @@
 const std = @import("std");
 const io = std.io;
+
 const c = @cImport({
     @cInclude("stdio.h");
     @cInclude("stdlib.h");
@@ -7,13 +8,34 @@ const c = @cImport({
     @cInclude("unistd.h");
 });
 
-pub fn main() !void {
-    var original_termios: c.struct_termios = undefined;
+/// # Original Termios struct
+/// Used to reset terminal on exit
+const original_termios: c.struct_termios = undefined;
+
+fn print_anything(prefix_msg: []const u8, thing: anytype, postfix_msg: []const u8) void {
+    std.log.debug(prefix_msg);
+    inline for (std.meta.fields(@TypeOf(thing))) |f| {
+        std.log.debug(f.name ++ " {any}\n", .{@as(f.type, @field(thing, f.name))});
+    }
+    std.log.debug(postfix_msg);
+}
+
+/// Perform Init actions
+/// Init Actions:
+///     - Enter canonical mode
+fn init() !void {
+    // Get
     _ = c.tcgetattr(c.STDIN_FILENO, &original_termios);
 
-    const stdout = io.getStdOut().writer();
+    var raw = original_termios;
 
-    inline for (std.meta.fields(@TypeOf(original_termios))) |f| {
-        try stdout.print(f.name ++ " {any}\n", .{@as(f.type, @field(original_termios, f.name))});
-    }
+    raw.c_cc[c.VMIN] = 1;
+    raw.c_cc[c.VTIME] = 0;
+    raw.c_iflag = c.ICANON;
+
+    _ = c.tcsetattr(c.STDIN_FILENO, c.TCSAFLUSH, &raw);
+}
+
+pub fn main() !void {
+    try init();
 }
