@@ -1,7 +1,9 @@
 const std = @import("std");
 const io = std.io;
 const terminal = @import("terminal.zig");
-const Key = @import("input.zig").Key;
+const display = @import("display.zig");
+const input = @import("input.zig");
+const editor = @import("editor.zig");
 
 const c = @cImport({
     @cInclude("stdio.h");
@@ -10,21 +12,6 @@ const c = @cImport({
     @cInclude("unistd.h");
 });
 
-const Mode = enum {
-    NORMAL,
-    INSERT,
-};
-
-const State = struct {
-    // filename: [*:0]u8,
-    x_pos: u32,
-    y_pos: u32,
-    mode: Mode,
-    exiting: bool,
-};
-
-var STATE: State = undefined;
-
 /// # Original Termios struct
 /// Used to reset terminal on exit
 var original_termios: c.struct_termios = undefined;
@@ -32,18 +19,16 @@ var original_termios: c.struct_termios = undefined;
 const stdin = io.getStdIn().reader();
 const stdout = io.getStdOut().writer();
 
-/// Perform Init actions
+/// # Perform Init actions
 /// Init Actions:
-///     - Enter canonical mode
-fn init() void {
+///     - Enter raw mode
+fn init() !void {
     // Get
     _ = c.tcgetattr(c.STDIN_FILENO, &original_termios);
 
     var raw = original_termios;
 
-    _ = stdout.print("{b}\n", .{raw.c_iflag}) catch {};
     c.cfmakeraw(&raw);
-    _ = stdout.print("{b}\n", .{raw.c_iflag}) catch {};
 
     raw.c_cc[c.VMIN] = 1;
     raw.c_cc[c.VTIME] = 0;
@@ -52,9 +37,14 @@ fn init() void {
 
     terminal.printEscapeCode(terminal.EscapeCode.CLEAR_SCREEN);
     terminal.printEscapeCode(terminal.EscapeCode.ENABLE_ALTERNATE_BUFFER);
+
+    try display.updateStatusBar();
 }
 
-fn clean_up() void {
+/// # Perform Clean up actions
+/// Clean up actions:
+///     - Return canonical mode
+fn cleanUp() void {
     terminal.printEscapeCode(terminal.EscapeCode.DISABLE_ALTERNATE_BUFFER);
     _ = c.tcsetattr(c.STDIN_FILENO, c.TCSAFLUSH, &original_termios);
 }
@@ -67,28 +57,28 @@ pub fn main() !void {
     //     return;
     // }
 
-    STATE = State{
-        .mode = Mode.NORMAL,
+    editor.state = editor.State{
+        .mode = editor.Mode.NORMAL,
         .x_pos = 1,
         .y_pos = 1,
         // .filename = args[1],
         .exiting = false,
     };
 
-    init();
-    defer clean_up();
+    try init();
+    defer cleanUp();
 
     try run();
 }
 
 fn run() !void {
-    while (!STATE.exiting) {
-        const input = try read_keypress();
-        process_input(input);
+    while (!editor.state.exiting) {
+        const user_input = try read_keypress();
+        try processInput(user_input);
     }
 }
 
-fn read_keypress() !Key {
+fn read_keypress() !input.Key {
     var buffer: [1]u8 = undefined;
 
     _ = try stdin.read(&buffer);
@@ -96,32 +86,33 @@ fn read_keypress() !Key {
     return @enumFromInt(buffer[0]);
 }
 
-fn process_input(input: Key) void {
-    switch (STATE.mode) {
-        Mode.NORMAL => process_input_normal_mode(input),
-        Mode.INSERT => process_input_insert_mode(input),
+fn processInput(user_input: input.Key) !void {
+    switch (editor.state.mode) {
+        editor.Mode.NORMAL => try processInputNormalMode(user_input),
+        editor.Mode.INSERT => try processInputInsertMode(user_input),
     }
 }
 
-fn process_input_normal_mode(input: Key) void {
-    switch (input) {
-        Key.LOWER_I => set_mode(Mode.INSERT),
-        Key.LOWER_Q => STATE.exiting = true,
-        Key.LOWER_H => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_BACK),
-        Key.LOWER_J => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_DOWN),
-        Key.LOWER_K => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_UP),
-        Key.LOWER_L => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_FORWARD),
+fn processInputNormalMode(user_input: input.Key) !void {
+    switch (user_input) {
+        input.Key.LOWER_I => try setMode(editor.Mode.INSERT),
+        input.Key.LOWER_Q => editor.state.exiting = true,
+        input.Key.LOWER_H => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_BACK),
+        input.Key.LOWER_J => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_DOWN),
+        input.Key.LOWER_K => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_UP),
+        input.Key.LOWER_L => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_FORWARD),
         else => {},
     }
 }
 
-fn process_input_insert_mode(input: Key) void {
-    switch (input) {
-        Key.ESC => set_mode(Mode.NORMAL),
-        else => _ = stdout.write(&[_]u8{@intFromEnum(input)}) catch {},
+fn processInputInsertMode(user_input: input.Key) !void {
+    switch (user_input) {
+        input.Key.ESC => try setMode(editor.Mode.NORMAL),
+        else => _ = stdout.write(&[_]u8{@intFromEnum(user_input)}) catch {},
     }
 }
 
-fn set_mode(new_mode: Mode) void {
-    STATE.mode = new_mode;
+fn setMode(new_mode: editor.Mode) !void {
+    editor.state.mode = new_mode;
+    try display.updateStatusBar();
 }
