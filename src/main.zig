@@ -4,13 +4,7 @@ const terminal = @import("terminal.zig");
 const display = @import("display.zig");
 const input = @import("input.zig");
 const editor = @import("editor.zig");
-
-const c = @cImport({
-    @cInclude("stdio.h");
-    @cInclude("stdlib.h");
-    @cInclude("termios.h");
-    @cInclude("unistd.h");
-});
+const c = @import("c_imports.zig");
 
 /// # Original Termios struct
 /// Used to reset terminal on exit

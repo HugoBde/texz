@@ -34,7 +34,7 @@ pub const EscapeCode = union(EscapeCodeTag) {
     BG_COLOR: Color,
     RESET_FG_COLOR: void,
     RESET_BG_COLOR: void,
-    ABSOLUTE_MOVE: struct { x: u32, y: u32 },
+    ABSOLUTE_MOVE: struct { x: usize, y: usize },
 };
 
 fn getEscapeCodeSequence(escape_code: EscapeCode) []const u8 {
@@ -74,7 +74,7 @@ pub fn resetColors() void {
     printEscapeCode(EscapeCode{ .BG_COLOR = Color.BLACK });
 }
 
-pub fn moveCursor(x: u32, y: u32) void {
+pub fn moveCursor(x: usize, y: usize) void {
     _ = y;
     _ = x;
 }

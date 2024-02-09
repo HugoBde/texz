@@ -2,21 +2,25 @@ const std = @import("std");
 
 const terminal = @import("terminal.zig");
 const editor = @import("editor.zig");
+const c = @import("c_imports.zig");
 
 const DisplayState = struct {
-    width: u32,
-    height: u32,
+    width: usize,
+    height: usize,
 };
 
 var displayState: DisplayState = undefined;
 
 fn updateDisplayState() !void {
-    const lines_num_env_var = std.os.getenv("LINES") orelse "80";
-    const cols_num_env_var = std.os.getenv("COLUMNS") orelse "80";
+    var winsz: c.winsize = undefined;
+
+    if (std.os.system.ioctl(c.STDOUT_FILENO, c.TIOCGWINSZ, &winsz) != 0) {
+        unreachable;
+    }
 
     displayState = DisplayState{
-        .width = try std.fmt.parseInt(u32, cols_num_env_var, 10),
-        .height = try std.fmt.parseInt(u32, lines_num_env_var, 10),
+        .width = winsz.ws_col,
+        .height = winsz.ws_row,
     };
 }
 
