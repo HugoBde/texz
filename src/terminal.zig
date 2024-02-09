@@ -7,7 +7,7 @@ const Color = enum {
     BLACK,
 };
 
-const EscapeCodeTag = enum {
+pub const EscapeCodeTag = enum {
     CURSOR_UP,
     CURSOR_DOWN,
     CURSOR_FORWARD,

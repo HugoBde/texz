@@ -11,7 +11,7 @@ const DisplayState = struct {
 
 var displayState: DisplayState = undefined;
 
-fn updateDisplayState() !void {
+pub fn updateDisplayState() !void {
     var winsz: c.winsize = undefined;
 
     if (std.os.system.ioctl(c.STDOUT_FILENO, c.TIOCGWINSZ, &winsz) != 0) {
@@ -25,12 +25,12 @@ fn updateDisplayState() !void {
 }
 
 pub fn updateStatusBar() !void {
-    // prepare new status bar
-    try updateDisplayState();
-
     var new_status_bar_buf: [1024]u8 = undefined;
 
     const new_status_bar = try std.fmt.bufPrint(&new_status_bar_buf, "><><>< {s} ><><><><><>", .{@tagName(editor.state.mode)});
+
+    // clear display
+    terminal.printEscapeCode(terminal.EscapeCodeTag.CLEAR_SCREEN);
 
     // mmove to status bar row
     terminal.moveCursor(0, displayState.height);
@@ -40,4 +40,9 @@ pub fn updateStatusBar() !void {
     terminal.invertColors();
     _ = try std.io.getStdOut().write(new_status_bar);
     terminal.resetColors();
+}
+
+pub fn sigwinchHandler(_: c_int) callconv(.C) void {
+    updateDisplayState() catch {};
+    updateStatusBar() catch {};
 }

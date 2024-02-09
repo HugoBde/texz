@@ -32,7 +32,10 @@ fn init() !void {
     terminal.printEscapeCode(terminal.EscapeCode.CLEAR_SCREEN);
     terminal.printEscapeCode(terminal.EscapeCode.ENABLE_ALTERNATE_BUFFER);
 
+    try display.updateDisplayState();
     try display.updateStatusBar();
+
+    _ = c.signal(c.SIGWINCH, display.sigwinchHandler);
 }
 
 /// # Perform Clean up actions
