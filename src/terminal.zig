@@ -56,25 +56,25 @@ fn getEscapeCodeSequence(escape_code: EscapeCode) []const u8 {
         },
         EscapeCode.RESET_FG_COLOR => "\x1b[39m",
         EscapeCode.RESET_BG_COLOR => "\x1b[49m",
-        EscapeCode.ABSOLUTE_MOVE => |_| "",
+        EscapeCode.ABSOLUTE_MOVE => "\x1b[{d};{d}m",
     };
 }
 
-pub fn printEscapeCode(escape_code: EscapeCode) void {
-    _ = stdout.write(getEscapeCodeSequence(escape_code)) catch {};
+pub fn printEscapeCode(escape_code: EscapeCode, args: anytype) void {
+    const code = getEscapeCodeSequence(escape_code);
+    stdout.print(code, args);
 }
 
 pub fn invertColors() void {
-    printEscapeCode(EscapeCode{ .FG_COLOR = Color.BLACK });
-    printEscapeCode(EscapeCode{ .BG_COLOR = Color.WHITE });
+    printEscapeCode(EscapeCode{ .FG_COLOR = Color.BLACK }, .{});
+    printEscapeCode(EscapeCode{ .BG_COLOR = Color.WHITE }, .{});
 }
 
 pub fn resetColors() void {
-    printEscapeCode(EscapeCode{ .FG_COLOR = Color.WHITE });
-    printEscapeCode(EscapeCode{ .BG_COLOR = Color.BLACK });
+    printEscapeCode(EscapeCode{ .FG_COLOR = Color.WHITE }, .{});
+    printEscapeCode(EscapeCode{ .BG_COLOR = Color.BLACK }, .{});
 }
 
 pub fn moveCursor(x: usize, y: usize) void {
-    _ = y;
-    _ = x;
+    printEscapeCode(EscapeCode.ABSOLUTE_MOVE, .{ x, y });
 }

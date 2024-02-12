@@ -13,12 +13,14 @@ var original_termios: c.struct_termios = undefined;
 
 const stdin = io.getStdIn().reader();
 const stdout = io.getStdOut().writer();
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+const main_allocator = gpa.allocator();
 
 /// # Perform Init actions
 /// Init Actions:
 ///     - Enter raw mode
 fn init() !void {
-    // Get
+    // Enter raw mode
     _ = c.tcgetattr(c.STDIN_FILENO, &original_termios);
 
     var raw = original_termios;
@@ -30,8 +32,8 @@ fn init() !void {
 
     _ = c.tcsetattr(c.STDIN_FILENO, c.TCSAFLUSH, &raw);
 
-    terminal.printEscapeCode(terminal.EscapeCode.CLEAR_SCREEN);
-    terminal.printEscapeCode(terminal.EscapeCode.ENABLE_ALTERNATE_BUFFER);
+    terminal.printEscapeCode(terminal.EscapeCode.CLEAR_SCREEN, .{});
+    terminal.printEscapeCode(terminal.EscapeCode.ENABLE_ALTERNATE_BUFFER, .{});
 
     try display.updateDisplayState();
     try display.updateStatusBar();
@@ -43,18 +45,11 @@ fn init() !void {
 /// Clean up actions:
 ///     - Return canonical mode
 fn cleanUp() void {
-    terminal.printEscapeCode(terminal.EscapeCode.DISABLE_ALTERNATE_BUFFER);
+    terminal.printEscapeCode(terminal.EscapeCode.DISABLE_ALTERNATE_BUFFER, .{});
     _ = c.tcsetattr(c.STDIN_FILENO, c.TCSAFLUSH, &original_termios);
 }
 
 pub fn main() !void {
-    // const args = std.os.argv;
-
-    // if (args.len != 2) {
-    //     std.debug.print("Usage: texz <filename>", .{});
-    //     return;
-    // }
-
     editor.state = editor.State{
         .mode = editor.Mode.NORMAL,
         .x_pos = 1,
@@ -70,6 +65,14 @@ pub fn main() !void {
 }
 
 fn run() !void {
+    const args = std.os.argv;
+    var file_buffer: buffer.Buffer = undefined;
+
+    if (args.len == 2) {
+        file_buffer = try buffer.Buffer.loadFile(main_allocator, args[1]);
+    }
+    try display.updateDisplay(file_buffer);
+
     while (!editor.state.exiting) {
         const user_input = try read_keypress();
         try processInput(user_input);
@@ -95,10 +98,10 @@ fn processInputNormalMode(user_input: input.Key) !void {
     switch (user_input) {
         input.Key.LOWER_I => try setMode(editor.Mode.INSERT),
         input.Key.LOWER_Q => editor.state.exiting = true,
-        input.Key.LOWER_H => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_BACK),
-        input.Key.LOWER_J => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_DOWN),
-        input.Key.LOWER_K => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_UP),
-        input.Key.LOWER_L => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_FORWARD),
+        input.Key.LOWER_H => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_BACK, .{}),
+        input.Key.LOWER_J => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_DOWN, .{}),
+        input.Key.LOWER_K => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_UP, .{}),
+        input.Key.LOWER_L => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_FORWARD, .{}),
         else => {},
     }
 }
