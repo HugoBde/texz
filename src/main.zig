@@ -5,6 +5,7 @@ const display = @import("display.zig");
 const input = @import("input.zig");
 const editor = @import("editor.zig");
 const c = @import("c_imports.zig");
+const buffer = @import("buffer.zig");
 
 /// # Original Termios struct
 /// Used to reset terminal on exit
@@ -76,11 +77,11 @@ fn run() !void {
 }
 
 fn read_keypress() !input.Key {
-    var buffer: [1]u8 = undefined;
+    var read_buffer: [1]u8 = undefined;
 
-    _ = try stdin.read(&buffer);
+    _ = try stdin.read(&read_buffer);
 
-    return @enumFromInt(buffer[0]);
+    return @enumFromInt(read_buffer[0]);
 }
 
 fn processInput(user_input: input.Key) !void {
