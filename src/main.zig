@@ -1,119 +1,99 @@
 const std = @import("std");
-const io = std.io;
+const c = @import("c.zig");
+
 const terminal = @import("terminal.zig");
-const display = @import("display.zig");
-const input = @import("input.zig");
-const editor = @import("editor.zig");
-const c = @import("c_imports.zig");
-const buffer = @import("buffer.zig");
 
-/// # Original Termios struct
-/// Used to reset terminal on exit
-var original_termios: c.struct_termios = undefined;
+const stdin = std.io.getStdIn().reader();
+const stdout = std.io.getStdOut().writer();
 
-const stdin = io.getStdIn().reader();
-const stdout = io.getStdOut().writer();
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-const main_allocator = gpa.allocator();
-
-/// # Perform Init actions
-/// Init Actions:
-///     - Enter raw mode
-fn init() !void {
-    // Enter raw mode
-    _ = c.tcgetattr(c.STDIN_FILENO, &original_termios);
-
-    var raw = original_termios;
-
-    c.cfmakeraw(&raw);
-
-    raw.c_cc[c.VMIN] = 1;
-    raw.c_cc[c.VTIME] = 0;
-
-    _ = c.tcsetattr(c.STDIN_FILENO, c.TCSAFLUSH, &raw);
-
-    terminal.printEscapeCode(terminal.EscapeCode.CLEAR_SCREEN, .{});
-    terminal.printEscapeCode(terminal.EscapeCode.ENABLE_ALTERNATE_BUFFER, .{});
-
-    try display.updateDisplayState();
-    try display.updateStatusBar();
-
-    _ = c.signal(c.SIGWINCH, display.sigwinchHandler);
-}
-
-/// # Perform Clean up actions
-/// Clean up actions:
-///     - Return canonical mode
-fn cleanUp() void {
-    terminal.printEscapeCode(terminal.EscapeCode.DISABLE_ALTERNATE_BUFFER, .{});
-    _ = c.tcsetattr(c.STDIN_FILENO, c.TCSAFLUSH, &original_termios);
-}
+const test_file_content =
+    \\#include <stdio.h>
+    \\
+    \\int main(int argc, char **argv) {
+    \\    printf("Hello, World!\n");
+    \\    return 0;
+    \\}
+;
 
 pub fn main() !void {
-    editor.state = editor.State{
-        .mode = editor.Mode.NORMAL,
-        .x_pos = 1,
-        .y_pos = 1,
-        // .filename = args[1],
-        .exiting = false,
-    };
+    try terminal.enter_raw_mode();
+    defer terminal.enter_canonical_mode() catch unreachable;
+    try stdout.writeAll("\x1b[1 q");
+    _ = c.signal(c.SIGWINCH, sigwinch_handler);
 
-    try init();
-    defer cleanUp();
+    try update_display_dimensions();
+    var read_buffer: [1]u8 = [1]u8{0};
 
-    try run();
-}
+    try update_display();
+    while (read_buffer[0] != 'q') {
+        // Read
+        _ = try stdin.read(&read_buffer);
 
-fn run() !void {
-    const args = std.os.argv;
-    var file_buffer: buffer.Buffer = undefined;
+        // Process
+        switch (read_buffer[0]) {
+            'h' => try move_cursor_left(),
+            'j' => try move_cursor_down(),
+            'k' => try move_cursor_up(),
+            'l' => try move_cursor_right(),
+            'q' => {
+                try stdout.print("Exiting...", .{});
+                break;
+            },
+            else => {},
+        }
 
-    if (args.len == 2) {
-        file_buffer = try buffer.Buffer.loadFile(main_allocator, args[1]);
+        // Display
+        try update_display();
     }
-    try display.updateDisplay(file_buffer);
 
-    while (!editor.state.exiting) {
-        const user_input = try read_keypress();
-        try processInput(user_input);
+    try stdout.writeAll("\x1b[0 q");
+}
+
+var display_dimensions: c.struct_winsize = undefined;
+
+fn update_display_dimensions() !void {
+    _ = c.ioctl(c.STDOUT_FILENO, c.TIOCGWINSZ, &display_dimensions);
+}
+
+fn update_display() !void {
+    try stdout.writeAll("\x1b[H");
+    var lines = std.mem.splitScalar(u8, test_file_content, '\n');
+    var line_num: usize = 1;
+    while (lines.next()) |line| : (line_num += 1) {
+        if (line_num >= display_dimensions.ws_row)
+            break;
+
+        try stdout.print("{d: >3} | {s}\r\n", .{ line_num, line });
     }
-}
 
-fn read_keypress() !input.Key {
-    var read_buffer: [1]u8 = undefined;
-
-    _ = try stdin.read(&read_buffer);
-
-    return @enumFromInt(read_buffer[0]);
-}
-
-fn processInput(user_input: input.Key) !void {
-    switch (editor.state.mode) {
-        editor.Mode.NORMAL => try processInputNormalMode(user_input),
-        editor.Mode.INSERT => try processInputInsertMode(user_input),
+    while (line_num < display_dimensions.ws_row) : (line_num += 1) {
+        try stdout.writeAll("~\r\n");
     }
+
+    try stdout.print("\x1b[{d};{d}H", .{ cursor_position.row, cursor_position.col });
 }
 
-fn processInputNormalMode(user_input: input.Key) !void {
-    switch (user_input) {
-        input.Key.LOWER_I => try setMode(editor.Mode.INSERT),
-        input.Key.LOWER_Q => editor.state.exiting = true,
-        input.Key.LOWER_H => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_BACK, .{}),
-        input.Key.LOWER_J => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_DOWN, .{}),
-        input.Key.LOWER_K => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_UP, .{}),
-        input.Key.LOWER_L => terminal.printEscapeCode(terminal.EscapeCode.CURSOR_FORWARD, .{}),
-        else => {},
-    }
+fn sigwinch_handler(_: c_int) callconv(.C) void {
+    update_display_dimensions() catch {};
+    update_display() catch {};
 }
 
-fn processInputInsertMode(user_input: input.Key) !void {
-    switch (user_input) {
-        input.Key.ESC => try setMode(editor.Mode.NORMAL),
-        else => _ = stdout.write(&[_]u8{@intFromEnum(user_input)}) catch {},
-    }
-}
+const CursorPosition = struct {
+    row: usize,
+    col: usize,
+};
 
-fn setMode(new_mode: editor.Mode) !void {
-    editor.state.mode = new_mode;
-    try display.updateStatusBar();
+var cursor_position = CursorPosition{ .row = 1, .col = 1 };
+
+fn move_cursor_left() !void {
+    cursor_position.col = @max(cursor_position.col - 1, 1);
+}
+fn move_cursor_down() !void {
+    cursor_position.row = @min(cursor_position.row + 1, display_dimensions.ws_row);
+}
+fn move_cursor_up() !void {
+    cursor_position.row = @max(cursor_position.row - 1, 1);
+}
+fn move_cursor_right() !void {
+    cursor_position.col = @min(cursor_position.col + 1, display_dimensions.ws_col);
 }
