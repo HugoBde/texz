@@ -79,3 +79,11 @@ pub fn enter_alternative_buffer() void {
 pub fn exit_alternative_buffer() void {
     stdout.writeAll("\x1b[?1049l") catch {};
 }
+
+pub fn invert_colors() void {
+    stdout.writeAll("\x1b[7m") catch {};
+}
+
+pub fn reset_colors() void {
+    stdout.writeAll("\x1b[m") catch {};
+}

@@ -13,6 +13,8 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const allocator = gpa.allocator();
 
 pub fn main() !void {
+    defer _ = gpa.detectLeaks();
+
     const args = try std.process.argsAlloc(allocator);
 
     if (args.len != 2) {
@@ -23,6 +25,7 @@ pub fn main() !void {
     const filename = args[1];
 
     buffer.file.content = try std.fs.cwd().readFileAlloc(allocator, filename, 4_000_000_000);
+    buffer.file.name = filename;
 
     try terminal.enter_raw_mode();
     defer terminal.enter_canonical_mode() catch unreachable;
